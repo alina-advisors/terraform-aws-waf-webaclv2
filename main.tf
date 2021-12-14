@@ -916,7 +916,23 @@ resource "aws_wafv2_web_acl" "main" {
                   }
                 }
 
-                #OR byte_match_statement
+                # OR geo_match_statement
+                dynamic "geo_match_statement" {
+                  for_each = length(lookup(statement.value, "geo_match_statement", {})) == 0 ? [] : [lookup(statement.value, "geo_match_statement", {})]
+                  content {
+                    country_codes = lookup(geo_match_statement.value, "country_codes")
+                  }
+                }
+
+                # OR ip_set_statement
+                dynamic "ip_set_reference_statement" {
+                  for_each = length(lookup(statement.value, "ip_set_reference_statement", {})) == 0 ? [] : [lookup(statement.value, "ip_set_reference_statement", {})]
+                  content {
+                    arn = lookup(ip_set_reference_statement.value, "arn")
+                  }
+                }
+
+                #OR regex_pattern_set_reference_statement
                 dynamic "regex_pattern_set_reference_statement" {
                   for_each = length(lookup(statement.value, "regex_pattern_set_reference_statement", {})) == 0 ? [] : [lookup(statement.value, "regex_pattern_set_reference_statement", {})]
                   content {
@@ -951,27 +967,11 @@ resource "aws_wafv2_web_acl" "main" {
                         }
                       }
                     }
-                    arn = lookup(regex_pattern_set_reference_statement.value, "arn")
+                    arn = try(aws_wafv2_regex_pattern_set.main[lookup(regex_pattern_set_reference_statement.value, "regex_pattern_set_index")].arn, "")
                     text_transformation {
                       priority = lookup(regex_pattern_set_reference_statement.value, "priority")
                       type     = lookup(regex_pattern_set_reference_statement.value, "type")
                     }
-                  }
-                }
-
-                # OR geo_match_statement
-                dynamic "geo_match_statement" {
-                  for_each = length(lookup(statement.value, "geo_match_statement", {})) == 0 ? [] : [lookup(statement.value, "geo_match_statement", {})]
-                  content {
-                    country_codes = lookup(geo_match_statement.value, "country_codes")
-                  }
-                }
-
-                # OR ip_set_statement
-                dynamic "ip_set_reference_statement" {
-                  for_each = length(lookup(statement.value, "ip_set_reference_statement", {})) == 0 ? [] : [lookup(statement.value, "ip_set_reference_statement", {})]
-                  content {
-                    arn = lookup(ip_set_reference_statement.value, "arn")
                   }
                 }
               }
@@ -1001,6 +1001,26 @@ resource "aws_wafv2_web_acl" "main" {
       sampled_requests_enabled   = lookup(visibility_config.value, "sampled_requests_enabled", true)
     }
   }
+}
+
+#####
+# WAFv2 regex pattern sets
+#####
+resource "aws_wafv2_regex_pattern_set" "main" {
+  count = var.enabled ? length(var.regex_pattern_sets) : 0
+
+  name        = var.regex_pattern_sets[count.index].name
+  description = try(var.regex_pattern_sets[count.index].description, "")
+  scope       = var.scope
+
+  dynamic "regular_expression" {
+    for_each = var.regex_pattern_sets[count.index].regular_expressions
+    content {
+      regex_string = regular_expression.value
+    }
+  }
+
+  tags = var.tags
 }
 
 #####
